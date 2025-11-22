@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Menu, Settings, ChevronLeft, ChevronRight, Volume2, Copy, RotateCcw, ThumbsDown, Sparkles, Send, ImagePlus } from 'lucide-react';
 import app from './firebaseConfig';
 import { getDatabase, ref, push, get, child } from 'firebase/database';
-import Sidebar from './Sidebar';
+import Sidebar from './SideBar';
 
 const SlothLogo = () => (
   <svg viewBox="0 0 100 100" width="28" height="28">
