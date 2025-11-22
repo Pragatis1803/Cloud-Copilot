@@ -33,6 +33,8 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
   const [imgIndex, setImgIndex] = useState(1);
   const [hasStarted, setHasStarted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
   const endRef = useRef(null);
 
@@ -96,7 +98,7 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     const messageData = {
       sender: type,
       timestamp: timestamp,
-      content: imageUrl ? 'image' : content
+      content: imageUrl ? (content ? `${content} <attached image>` : 'image') : content
     };
 
     // Save to Firebase (non-blocking)
@@ -104,49 +106,56 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
 
     // Add to local state for display
     const newMsg = {
-      id: Date.now(),
+      id: Date.now() + Math.random(),
       type,
       text: content,
       time,
       hasImage: !!imageUrl,
-      imageUrl
+      imageUrl: imageUrl || null
     };
 
     setMessages(prev => [...prev, newMsg]);
   };
 
   const sendMessage = () => {
-    if (!input.trim()) return;
+    const hasText = input.trim().length > 0;
+    const hasImage = !!imagePreviewUrl;
+    
+    if (!hasText && !hasImage) return;
     if (!hasStarted) setHasStarted(true);
     
-    const userMessage = input;
+    const userMessage = input.trim();
     setInput('');
     
-    // Add user message
-    addMessage('user', userMessage);
+    // Add user message with optional image
+    addMessage('user', userMessage, hasImage ? imagePreviewUrl : null);
+    
+    // Clear image preview
+    setSelectedImage(null);
+    setImagePreviewUrl(null);
 
     // Simulate bot response
     setTimeout(() => {
-      addMessage('bot', "That's an interesting question! Let me think about that...");
+      if (hasImage) {
+        addMessage('bot', "I've received your architecture diagram. Let me analyze it against well-architected framework best practices and provide recommendations...");
+      } else {
+        addMessage('bot', "That's an interesting question! Let me think about that...");
+      }
     }, 1000);
   };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
-      if (!hasStarted) setHasStarted(true);
-      
-      const imageUrl = URL.createObjectURL(file);
-      
-      // Add user image message
-      addMessage('user', '', imageUrl);
-
-      // Simulate bot response
-      setTimeout(() => {
-        addMessage('bot', "I've received your architecture diagram. Let me analyze it against well-architected framework best practices and provide recommendations...");
-      }, 1000);
+      setSelectedImage(file);
+      setImagePreviewUrl(URL.createObjectURL(file));
     }
     e.target.value = '';
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreviewUrl(null);
   };
 
   const styles = {
@@ -179,6 +188,9 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     imgNav: { display: 'flex', alignItems: 'center', gap: 8 },
     imgActions: { display: 'flex', gap: 4 },
     inputArea: { padding: 16, backgroundColor: darkMode ? '#1f2937' : '#fff', borderTop: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`, flexShrink: 0 },
+    imagePreview: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', marginBottom: 8 },
+    imagePreviewImg: { width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}` },
+    imagePreviewRemove: { padding: 4, borderRadius: '50%', border: 'none', cursor: 'pointer', backgroundColor: darkMode ? '#374151' : '#e5e7eb', color: darkMode ? '#fff' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 },
     inputRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px', border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`, borderRadius: 9999, backgroundColor: darkMode ? '#111827' : '#fff' },
     input: { flex: 1, border: 'none', outline: 'none', backgroundColor: 'transparent', color: darkMode ? '#fff' : '#1f2937', fontSize: 14 },
     sendBtn: { width: 32, height: 32, borderRadius: '50%', backgroundColor: '#6366f1', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' },
@@ -252,9 +264,9 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
                               ))}
                             </ol>
                           )}
-                          {msg.hasImage && (
+                          {msg.hasImage && msg.imageUrl && (
                             <div style={styles.imgContainer}>
-                              <img src={msg.imageUrl} alt="Response" style={styles.img} />
+                              <img src={msg.imageUrl} alt="Uploaded" style={styles.img} />
                               {msg.type === 'bot' && (
                                 <div style={styles.imgControls}>
                                   <div style={styles.imgNav}>
@@ -283,6 +295,13 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
             </div>
 
             <div style={styles.inputArea}>
+              {imagePreviewUrl && (
+                <div style={styles.imagePreview}>
+                  <img src={imagePreviewUrl} alt="Preview" style={styles.imagePreviewImg} />
+                  <button style={styles.imagePreviewRemove} onClick={removeSelectedImage}>✕</button>
+                  <span style={{ fontSize: 12, color: darkMode ? '#9ca3af' : '#6b7280' }}>Image attached</span>
+                </div>
+              )}
               <div style={styles.inputRow}>
                 <button style={styles.iconBtn}><Sparkles size={20} /></button>
                 <input
