@@ -1,10 +1,9 @@
 //@ts-nocheck
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Menu, Settings, ChevronDown, ChevronLeft, ChevronRight, Volume2, Copy, RotateCcw, ThumbsDown, Sparkles, Send, ImagePlus } from 'lucide-react';
+import { Sun, Moon, Menu, Settings, ChevronLeft, ChevronRight, Volume2, Copy, RotateCcw, ThumbsDown, Sparkles, Send, ImagePlus } from 'lucide-react';
 import app from './firebaseConfig';
-import { getDatabase, ref, push, set } from 'firebase/database';
-
-const initialMessages = [];
+import { getDatabase, ref, push, get, child } from 'firebase/database';
+import Sidebar from './Sidebar';
 
 const SlothLogo = () => (
   <svg viewBox="0 0 100 100" width="28" height="28">
@@ -25,41 +24,74 @@ const SlothLogo = () => (
   </svg>
 );
 
-export default function Home() {
-
-
+export default function Home({ sessionId, onNewChat, onSessionSelect }) {
   const database = getDatabase(app);
-
-  const generateSessionId = () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   const [darkMode, setDarkMode] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [imgIndex, setImgIndex] = useState(1);
   const [hasStarted, setHasStarted] = useState(false);
-  const [sessionId, setSessionId] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const fileInputRef = useRef(null);
   const endRef = useRef(null);
 
-  const saveMessageToFirebase = async (sessionId, messageData) => {
-  // In your actual implementation, use:
-  const messageRef = ref(database, `chats/${sessionId}`);
-  await push(messageRef, messageData);
-  console.log(`Saving to Firebase: chats/${sessionId}`, messageData);
-};
-  // Create new session on page load
+  const saveMessageToFirebase = async (messageData) => {
+    const messageRef = ref(database, `chats/${sessionId}`);
+    await push(messageRef, messageData);
+    console.log(`Saving to Firebase: chats/${sessionId}`, messageData);
+  };
+
+  // Load messages from current session
+  const loadSessionMessages = async () => {
+    try {
+      const dbRef = ref(database);
+      const snapshot = await get(child(dbRef, `chats/${sessionId}`));
+      
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const loadedMessages = Object.values(data).map((msg, index) => ({
+          id: Date.now() + index,
+          type: msg.sender,
+          text: msg.content === 'image' ? '' : msg.content,
+          time: `${(new Date(msg.timestamp).getMonth() + 1).toString().padStart(2, '0')}/${new Date(msg.timestamp).getDate().toString().padStart(2, '0')} ${new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+          hasImage: msg.content === 'image',
+          imageUrl: msg.content === 'image' ? '' : null
+        }));
+        setMessages(loadedMessages);
+        setHasStarted(loadedMessages.length > 0);
+      } else {
+        setMessages([]);
+        setHasStarted(false);
+      }
+    } catch (error) {
+      console.error('Error loading session:', error);
+    }
+  };
+
+  // Load messages when sessionId changes
   useEffect(() => {
-    const newSessionId = generateSessionId();
-    setSessionId(newSessionId);
-    console.log('New chat session created:', newSessionId);
-  }, []);
+    if (sessionId) {
+      loadSessionMessages();
+      console.log('Current session:', sessionId);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-   const addMessage = (type, content, imageUrl = null) => {
+  const getFormattedTime = () => {
+    const now = new Date();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return `${month}/${day} ${time}`;
+  };
+
+  const addMessage = (type, content, imageUrl = null) => {
     const timestamp = new Date().toISOString();
-    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const time = getFormattedTime();
     
     const messageData = {
       sender: type,
@@ -68,7 +100,7 @@ export default function Home() {
     };
 
     // Save to Firebase (non-blocking)
-    saveMessageToFirebase(sessionId, messageData);
+    saveMessageToFirebase(messageData);
 
     // Add to local state for display
     const newMsg = {
@@ -116,7 +148,6 @@ export default function Home() {
     }
     e.target.value = '';
   };
-  
 
   const styles = {
     wrapper: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: darkMode ? '#1f2937' : '#e5e7eb', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
@@ -125,7 +156,9 @@ export default function Home() {
     headerRight: { display: 'flex', alignItems: 'center', gap: 8 },
     iconBtn: { padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', backgroundColor: 'transparent', color: darkMode ? '#9ca3af' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     avatar: { width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 500 },
-    mainArea: { flex: 1, display: 'flex', justifyContent: 'center', padding: '24px 0', backgroundColor: darkMode ? '#1f2937' : '#e5e7eb', overflow: 'hidden' },
+    mainArea: { flex: 1, display: 'flex', overflow: 'hidden' },
+    sidebarContainer: { flexShrink: 0 },
+    contentArea: { flex: 1, display: 'flex', justifyContent: 'center', padding: '24px 0', backgroundColor: darkMode ? '#1f2937' : '#e5e7eb', overflow: 'hidden' },
     container: { width: '80%', display: 'flex', flexDirection: 'column', backgroundColor: darkMode ? '#111827' : '#f9fafb', borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', maxHeight: '100%' },
     chatArea: { flex: 1, overflowY: 'auto', padding: 24, backgroundColor: darkMode ? '#111827' : '#f9fafb' },
     msgRow: { display: 'flex', gap: 12, marginBottom: 24 },
@@ -155,108 +188,122 @@ export default function Home() {
     welcomeSub: { fontSize: 16, color: darkMode ? '#9ca3af' : '#6b7280' }
   };
 
-    return (
+  return (
     <div style={styles.wrapper}>
       <header style={styles.header}>
         <div style={styles.headerLeft}>
+          <button style={styles.iconBtn} onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <Menu size={20} />
+          </button>
           <span>Cloud Copilot</span>
-          <ChevronDown size={16} />
         </div>
         <div style={styles.headerRight}>
           <button style={styles.iconBtn} onClick={() => setDarkMode(!darkMode)}>
             {darkMode ? <Moon size={20} /> : <Sun size={20} />}
           </button>
-          <button style={styles.iconBtn}><Menu size={20} /></button>
           <button style={styles.iconBtn}><Settings size={20} /></button>
           <div style={styles.avatar}>U</div>
         </div>
       </header>
 
       <div style={styles.mainArea}>
-        <div style={styles.container}>
-          <div style={styles.chatArea}>
-            {!hasStarted ? (
-              <div style={styles.welcome}>
-                <div style={styles.welcomeText}>Hii, How can I help you today?</div>
-                <div style={styles.welcomeSub}>Send a message or upload your architecture diagram for review.</div>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg) => (
-                  <div key={msg.id} style={styles.msgRow}>
-                    {msg.type === 'user' ? (
-                      <div style={styles.userAvatar}>U</div>
-                    ) : (
-                      <div style={styles.botAvatar}><SlothLogo /></div>
-                    )}
-                    <div style={styles.msgContent}>
-                      <div style={styles.msgHeader}>
-                        <span style={styles.msgName}>{msg.type === 'user' ? 'You' : 'Cloud Copilot'}</span>
-                        <span style={styles.msgTime}>{msg.time}</span>
-                      </div>
-                      <div style={msg.type === 'user' ? styles.userBubble : styles.botBubble}>
-                        {msg.text && <p style={{ margin: 0 }}>{msg.text}</p>}
-                        {msg.list && (
-                          <ol style={styles.list}>
-                            {msg.list.map((item, i) => (
-                              <li key={i} style={styles.listItem}>
-                                <span style={styles.listNum}>{i + 1}.</span>
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ol>
-                        )}
-                        {msg.hasImage && (
-                          <div style={styles.imgContainer}>
-                            <img src={msg.imageUrl} alt="Response" style={styles.img} />
-                            {msg.type === 'bot' && (
-                              <div style={styles.imgControls}>
-                                <div style={styles.imgNav}>
-                                  <button style={styles.iconBtn}><ChevronLeft size={16} /></button>
-                                  <span style={{ fontSize: 12, color: darkMode ? '#9ca3af' : '#6b7280' }}>{imgIndex}/8</span>
-                                  <button style={styles.iconBtn}><ChevronRight size={16} /></button>
+        {sidebarOpen && (
+          <div style={styles.sidebarContainer}>
+            <Sidebar 
+              darkMode={darkMode} 
+              currentSessionId={sessionId} 
+              onSessionSelect={onSessionSelect}
+              onNewChat={onNewChat}
+            />
+          </div>
+        )}
+        
+        <div style={styles.contentArea}>
+          <div style={styles.container}>
+            <div style={styles.chatArea}>
+              {!hasStarted ? (
+                <div style={styles.welcome}>
+                  <div style={styles.welcomeText}>Hii, How can I help you today?</div>
+                  <div style={styles.welcomeSub}>Send a message or upload your architecture diagram for review.</div>
+                </div>
+              ) : (
+                <>
+                  {messages.map((msg) => (
+                    <div key={msg.id} style={styles.msgRow}>
+                      {msg.type === 'user' ? (
+                        <div style={styles.userAvatar}>U</div>
+                      ) : (
+                        <div style={styles.botAvatar}><SlothLogo /></div>
+                      )}
+                      <div style={styles.msgContent}>
+                        <div style={styles.msgHeader}>
+                          <span style={styles.msgName}>{msg.type === 'user' ? 'You' : 'Cloud Copilot'}</span>
+                          <span style={styles.msgTime}>{msg.time}</span>
+                        </div>
+                        <div style={msg.type === 'user' ? styles.userBubble : styles.botBubble}>
+                          {msg.text && <p style={{ margin: 0 }}>{msg.text}</p>}
+                          {msg.list && (
+                            <ol style={styles.list}>
+                              {msg.list.map((item, i) => (
+                                <li key={i} style={styles.listItem}>
+                                  <span style={styles.listNum}>{i + 1}.</span>
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                          {msg.hasImage && (
+                            <div style={styles.imgContainer}>
+                              <img src={msg.imageUrl} alt="Response" style={styles.img} />
+                              {msg.type === 'bot' && (
+                                <div style={styles.imgControls}>
+                                  <div style={styles.imgNav}>
+                                    <button style={styles.iconBtn}><ChevronLeft size={16} /></button>
+                                    <span style={{ fontSize: 12, color: darkMode ? '#9ca3af' : '#6b7280' }}>{imgIndex}/8</span>
+                                    <button style={styles.iconBtn}><ChevronRight size={16} /></button>
+                                  </div>
+                                  <div style={styles.imgActions}>
+                                    <button style={styles.iconBtn}><Volume2 size={16} /></button>
+                                    <button style={styles.iconBtn}><Copy size={16} /></button>
+                                    <button style={styles.iconBtn}><RotateCcw size={16} /></button>
+                                    <button style={styles.iconBtn}><ThumbsDown size={16} /></button>
+                                    <button style={styles.iconBtn}><Sparkles size={16} /></button>
+                                  </div>
                                 </div>
-                                <div style={styles.imgActions}>
-                                  <button style={styles.iconBtn}><Volume2 size={16} /></button>
-                                  <button style={styles.iconBtn}><Copy size={16} /></button>
-                                  <button style={styles.iconBtn}><RotateCcw size={16} /></button>
-                                  <button style={styles.iconBtn}><ThumbsDown size={16} /></button>
-                                  <button style={styles.iconBtn}><Sparkles size={16} /></button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                <div ref={endRef} />
-              </>
-            )}
-          </div>
-
-          <div style={styles.inputArea}>
-            <div style={styles.inputRow}>
-              <button style={styles.iconBtn}><Sparkles size={20} /></button>
-              <input
-                style={styles.input}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Message Cloud Copilot..."
-              />
-              <button style={styles.iconBtn} onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} /></button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                style={{ display: 'none' }}
-              />
-              <button style={styles.sendBtn} onClick={sendMessage}><Send size={16} /></button>
+                  ))}
+                  <div ref={endRef} />
+                </>
+              )}
             </div>
-            <p style={styles.footer}>Cloud Copilot provides the first level of Cloud Architecture Review. Please double check responses.</p>
+
+            <div style={styles.inputArea}>
+              <div style={styles.inputRow}>
+                <button style={styles.iconBtn}><Sparkles size={20} /></button>
+                <input
+                  style={styles.input}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                  placeholder="Message Cloud Copilot..."
+                />
+                <button style={styles.iconBtn} onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} /></button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                />
+                <button style={styles.sendBtn} onClick={sendMessage}><Send size={16} /></button>
+              </div>
+              <p style={styles.footer}>Cloud Copilot provides the first level of Cloud Architecture Review. Please double check responses.</p>
+            </div>
           </div>
         </div>
       </div>
