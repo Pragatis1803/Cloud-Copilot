@@ -43,7 +43,8 @@ const Sidebar = ({ darkMode, currentSessionId, onSessionSelect, onNewChat }) => 
           return timestampB - timestampA;
         });
         
-        setSessions(sorted);
+        // Limit to top 10 chats
+        setSessions(sorted.slice(0, 10));
       } else {
         setSessions([]);
       }
