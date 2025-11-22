@@ -4,6 +4,7 @@ import { Sun, Moon, Menu, Settings, ChevronLeft, ChevronRight, Volume2, Copy, Ro
 import app from './firebaseConfig';
 import { getDatabase, ref, push, get, child } from 'firebase/database';
 import Sidebar from './SideBar';
+import { analyzeArchitectureDiagram } from './openAiServices';
 
 const SlothLogo = () => (
   <svg viewBox="0 0 100 100" width="28" height="28">
@@ -35,9 +36,21 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  
   const fileInputRef = useRef(null);
   const endRef = useRef(null);
 
+  // Get formatted time with date
+  const getFormattedTime = () => {
+    const now = new Date();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return `${month}/${day} ${time}`;
+  };
+
+  // Save message to Firebase
   const saveMessageToFirebase = async (messageData) => {
     const messageRef = ref(database, `chats/${sessionId}`);
     await push(messageRef, messageData);
@@ -57,8 +70,8 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
           type: msg.sender,
           text: msg.content === 'image' ? '' : msg.content,
           time: `${(new Date(msg.timestamp).getMonth() + 1).toString().padStart(2, '0')}/${new Date(msg.timestamp).getDate().toString().padStart(2, '0')} ${new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-          hasImage: msg.content === 'image',
-          imageUrl: msg.content === 'image' ? '' : null
+          hasImage: msg.content === 'image' || msg.content.includes('<attached image>'),
+          imageUrl: null
         }));
         setMessages(loadedMessages);
         setHasStarted(loadedMessages.length > 0);
@@ -79,18 +92,12 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     }
   }, [sessionId]);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const getFormattedTime = () => {
-    const now = new Date();
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    const day = now.getDate().toString().padStart(2, '0');
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    return `${month}/${day} ${time}`;
-  };
-
+  // Add message to state and Firebase
   const addMessage = (type, content, imageUrl = null) => {
     const timestamp = new Date().toISOString();
     const time = getFormattedTime();
@@ -117,7 +124,8 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     setMessages(prev => [...prev, newMsg]);
   };
 
-  const sendMessage = () => {
+  // Send message handler
+  const sendMessage = async () => {
     const hasText = input.trim().length > 0;
     const hasImage = !!imagePreviewUrl;
     
@@ -130,20 +138,41 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     // Add user message with optional image
     addMessage('user', userMessage, hasImage ? imagePreviewUrl : null);
     
+    // Store selected image before clearing
+    const imageToProcess = selectedImage;
+    
     // Clear image preview
     setSelectedImage(null);
     setImagePreviewUrl(null);
 
-    // Simulate bot response
-    setTimeout(() => {
-      if (hasImage) {
-        addMessage('bot', "I've received your architecture diagram. Let me analyze it against well-architected framework best practices and provide recommendations...");
-      } else {
-        addMessage('bot', "That's an interesting question! Let me think about that...");
+    // If image is attached, process with OpenAI
+    if (hasImage && imageToProcess) {
+      setIsProcessingImage(true);
+      
+      try {
+        const result = await analyzeArchitectureDiagram(imageToProcess);
+        
+        if (result.success) {
+          console.log('Architecture Analysis:', result.data);
+          addMessage('bot', "I've analyzed your architecture diagram. Here's what I found based on well-architected framework best practices...");
+        } else {
+          addMessage('bot', "I had trouble analyzing the image. Please try again or provide more details about your architecture.");
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        addMessage('bot', "An error occurred while processing your diagram. Please try again.");
+      } finally {
+        setIsProcessingImage(false);
       }
-    }, 1000);
+    } else {
+      // Simulate bot response for text-only messages
+      setTimeout(() => {
+        addMessage('bot', "That's an interesting question! Let me think about that...");
+      }, 1000);
+    }
   };
 
+  // Handle image upload
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
@@ -153,6 +182,7 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
     e.target.value = '';
   };
 
+  // Remove selected image
   const removeSelectedImage = () => {
     setSelectedImage(null);
     setImagePreviewUrl(null);
@@ -308,10 +338,13 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
                   style={styles.input}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                  onKeyDown={(e) => e.key === 'Enter' && !isProcessingImage && sendMessage()}
                   placeholder="Message Cloud Copilot..."
+                  disabled={isProcessingImage}
                 />
-                <button style={styles.iconBtn} onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} /></button>
+                <button style={styles.iconBtn} onClick={() => fileInputRef.current?.click()} disabled={isProcessingImage}>
+                  <ImagePlus size={20} />
+                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -319,7 +352,13 @@ export default function Home({ sessionId, onNewChat, onSessionSelect }) {
                   onChange={handleImageUpload}
                   style={{ display: 'none' }}
                 />
-                <button style={styles.sendBtn} onClick={sendMessage}><Send size={16} /></button>
+                <button 
+                  style={{...styles.sendBtn, opacity: isProcessingImage ? 0.5 : 1, cursor: isProcessingImage ? 'not-allowed' : 'pointer'}} 
+                  onClick={sendMessage} 
+                  disabled={isProcessingImage}
+                >
+                  {isProcessingImage ? '...' : <Send size={16} />}
+                </button>
               </div>
               <p style={styles.footer}>Cloud Copilot provides the first level of Cloud Architecture Review. Please double check responses.</p>
             </div>
