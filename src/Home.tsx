@@ -1,6 +1,8 @@
 //@ts-nocheck
 import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Menu, Settings, ChevronDown, ChevronLeft, ChevronRight, Volume2, Copy, RotateCcw, ThumbsDown, Sparkles, Send, ImagePlus } from 'lucide-react';
+import app from './firebaseConfig';
+import { getDatabase, ref, push, set } from 'firebase/database';
 
 const initialMessages = [];
 
@@ -24,27 +26,76 @@ const SlothLogo = () => (
 );
 
 export default function Home() {
+
+
+  const database = getDatabase(app);
+
+  const generateSessionId = () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const [darkMode, setDarkMode] = useState(false);
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [imgIndex, setImgIndex] = useState(1);
   const [hasStarted, setHasStarted] = useState(false);
+  const [sessionId, setSessionId] = useState('');
   const fileInputRef = useRef(null);
   const endRef = useRef(null);
+
+  const saveMessageToFirebase = async (sessionId, messageData) => {
+  // In your actual implementation, use:
+  const messageRef = ref(database, `chats/${sessionId}`);
+  await push(messageRef, messageData);
+  console.log(`Saving to Firebase: chats/${sessionId}`, messageData);
+};
+  // Create new session on page load
+  useEffect(() => {
+    const newSessionId = generateSessionId();
+    setSessionId(newSessionId);
+    console.log('New chat session created:', newSessionId);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+   const addMessage = (type, content, imageUrl = null) => {
+    const timestamp = new Date().toISOString();
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    const messageData = {
+      sender: type,
+      timestamp: timestamp,
+      content: imageUrl ? 'image' : content
+    };
+
+    // Save to Firebase (non-blocking)
+    saveMessageToFirebase(sessionId, messageData);
+
+    // Add to local state for display
+    const newMsg = {
+      id: Date.now(),
+      type,
+      text: content,
+      time,
+      hasImage: !!imageUrl,
+      imageUrl
+    };
+
+    setMessages(prev => [...prev, newMsg]);
+  };
+
   const sendMessage = () => {
     if (!input.trim()) return;
     if (!hasStarted) setHasStarted(true);
-    const t = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    setMessages(prev => [...prev, { id: Date.now(), type: 'user', text: input, time: t }]);
+    
+    const userMessage = input;
     setInput('');
+    
+    // Add user message
+    addMessage('user', userMessage);
+
+    // Simulate bot response
     setTimeout(() => {
-      const t2 = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      setMessages(prev => [...prev, { id: Date.now() + 1, type: 'bot', text: "That's an interesting question! Let me think about that...", time: t2 }]);
+      addMessage('bot', "That's an interesting question! Let me think about that...");
     }, 1000);
   };
 
@@ -52,16 +103,20 @@ export default function Home() {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
       if (!hasStarted) setHasStarted(true);
-      const t = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      
       const imageUrl = URL.createObjectURL(file);
-      setMessages(prev => [...prev, { id: Date.now(), type: 'user', text: '', hasImage: true, imageUrl, time: t }]);
+      
+      // Add user image message
+      addMessage('user', '', imageUrl);
+
+      // Simulate bot response
       setTimeout(() => {
-        const t2 = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        setMessages(prev => [...prev, { id: Date.now() + 1, type: 'bot', text: "I've received your architecture diagram. Let me analyze it against well-architected framework best practices and provide recommendations...", time: t2 }]);
+        addMessage('bot', "I've received your architecture diagram. Let me analyze it against well-architected framework best practices and provide recommendations...");
       }, 1000);
     }
     e.target.value = '';
   };
+  
 
   const styles = {
     wrapper: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: darkMode ? '#1f2937' : '#e5e7eb', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' },
@@ -100,11 +155,11 @@ export default function Home() {
     welcomeSub: { fontSize: 16, color: darkMode ? '#9ca3af' : '#6b7280' }
   };
 
-  return (
+    return (
     <div style={styles.wrapper}>
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          <span>Cloud Compute</span>
+          <span>Cloud Copilot</span>
           <ChevronDown size={16} />
         </div>
         <div style={styles.headerRight}>
@@ -136,7 +191,7 @@ export default function Home() {
                     )}
                     <div style={styles.msgContent}>
                       <div style={styles.msgHeader}>
-                        <span style={styles.msgName}>{msg.type === 'user' ? 'You' : 'Cloud Compute'}</span>
+                        <span style={styles.msgName}>{msg.type === 'user' ? 'You' : 'Cloud Copilot'}</span>
                         <span style={styles.msgTime}>{msg.time}</span>
                       </div>
                       <div style={msg.type === 'user' ? styles.userBubble : styles.botBubble}>
@@ -189,7 +244,7 @@ export default function Home() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Message Cloud Compute..."
+                placeholder="Message Cloud Copilot..."
               />
               <button style={styles.iconBtn} onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} /></button>
               <input
@@ -201,7 +256,7 @@ export default function Home() {
               />
               <button style={styles.sendBtn} onClick={sendMessage}><Send size={16} /></button>
             </div>
-            <p style={styles.footer}>Cloud Compute provides the first level of Cloud Architecture Review. Please double check responses.</p>
+            <p style={styles.footer}>Cloud Copilot provides the first level of Cloud Architecture Review. Please double check responses.</p>
           </div>
         </div>
       </div>
