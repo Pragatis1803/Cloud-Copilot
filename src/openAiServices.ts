@@ -29,7 +29,7 @@ export const analyzeArchitectureDiagram = async (imageFile: File) => {
           content: [
             {
               type: "text",
-              text: "Identify cloud service components, integrations, and connectivity patterns from architecture diagrams. Return the response as one list of json which has components, their usage and their connectivity as attributes."
+              text: "Identify cloud service components, integrations, and connectivity patterns from architecture diagrams. Return the response as one list of json which has components, their usage and the list of connectivity as attributes."
             },
             {
               type: "image_url",
@@ -46,7 +46,7 @@ export const analyzeArchitectureDiagram = async (imageFile: File) => {
 
     if (response.choices && response.choices[0]?.message?.content) {
       const jsonResponse = JSON.parse(response.choices[0].message.content);
-      console.log('OpenAI Architecture Analysis Response:', jsonResponse);
+      console.log('OpenAI Architecture Analysis Response:', JSON.stringify(jsonResponse));
       return {
         success: true,
         data: jsonResponse
