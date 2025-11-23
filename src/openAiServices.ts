@@ -29,7 +29,7 @@ export const analyzeArchitectureDiagram = async (imageFile: File) => {
           content: [
             {
               type: "text",
-              text: "Identify cloud service components, integrations, and connectivity patterns from architecture diagrams. Return the response as json which has components, their usage and their connectivity as attributes."
+              text: "Identify cloud service components, integrations, and connectivity patterns from architecture diagrams. Return the response as one list of json which has components, their usage and their connectivity as attributes."
             },
             {
               type: "image_url",
